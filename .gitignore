@@ -3,3 +3,5 @@ site/
 __pycache__/
 data/基金.xls
 roundtrip.xls
+.holdings_key
+data/基金.xls
