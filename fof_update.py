@@ -613,11 +613,16 @@ def _lastv(arr):
 
 
 def _short_name(name, code):
-    """把长基金名压缩成图例用短名（保留 ETF 等后缀）。"""
+    """把长基金名压缩成图例用短名（保留 ETF 等后缀，避免语义截断）。"""
     s = re.sub(r"（.*?）|\(.*?\)", "", name)
     s = re.sub(r"(证券投资基金|发起式|发起)", "", s).strip()
     if len(s) > 16:
-        s = s[:9] + "…" + s[-6:]
+        # 优先去掉交易所前缀（上证/中证/深证/沪深），保住"地方政府债"等关键语义
+        s2 = re.sub(r"(上证|中证|深证|沪深)", "", s)
+        if len(s2) <= 16:
+            s = s2
+    if len(s) > 16:
+        s = s[:15] + "…"
     return s
 
 
@@ -760,7 +765,7 @@ def _changes_section(changes, totals):
                  '<td class="l"><span class="tag %s">%s</span></td>'
                  '<td>%s</td><td>%s</td>'
                  '<td style="color:%s;font-weight:700">%s</td>'
-                 '<td>%s</td><td class="l" style="font-family:inherit;font-size:12px">%s</td></tr>'
+                 '<td>%s</td><td class="l" style="font-family:inherit;font-size:13px">%s</td></tr>'
                  % (it["name"], it["code"], cls, it["type"],
                     fmt(it["prevShares"], 2), fmt(it["curShares"], 2),
                     dsc, fmt(it["dShares"], 2, True), fmt(it["dMv"], 2, True), it["note"]))
@@ -951,16 +956,18 @@ def _fcards(funds):
             {"open": "tag-g", "lock": "tag-r"}.get(f["liqGroup"], "tag-x"), "#a86a10")
         sttag = {"open": "tag-g", "lock": "tag-r"}.get(f["liqGroup"], "tag-x")
         barw = min(100, max(3, f["weight"]))
+        # fund_Rate 实际是申购费率（折扣后），ETF 无申购费
+        fee_lbl = ("申购费 " + f["fee"]) if f["fee"] != "—" else "场内交易"
         r += '<div class="fcard">' + \
              '<div class="fh"><div><div class="fname">%s</div>' % f["name"] + \
              '<div class="fmeta">%s · %s · %s</div>' % (f["code"], f["cls"], f["mk"]) + \
              '<div style="margin-top:6px"><span class="tag %s">%s</span> <span class="tag %s">%s</span>' \
-             '<span class="tag tag-x">管理费 %s</span>%s</div></div>' % (
-                 "tag-b" if "ETF" in f["cls"] else "tag-e", f["cls"], sttag, f["liqShort"], f["fee"],
+             '<span class="tag tag-x">%s</span>%s</div></div>' % (
+                 "tag-b" if "ETF" in f["cls"] else "tag-e", f["cls"], sttag, f["liqShort"], fee_lbl,
                  ('<span class="tag tag-x" style="margin-left:4px">机构持有 %.1f%%</span>' % f["instHold"])
                  if f["instHold"] else "") + \
              '<div style="text-align:right"><div class="fret" style="color:%s">%s</div>' % (rc, pct(f["ret"], 2)) + \
-             '<div style="font-size:11px;color:#8794a8">账面收益率</div></div></div>' + \
+             '<div style="font-size:12px;color:#8794a8">账面收益率</div></div></div>' + \
              '<div class="frow"><span class="fl">持仓市值 / 组合权重</span><span class="fv">%s 万元 · %.2f%%</span></div>' % (fmt(f["mv"]), f["weight"]) + \
              '<div class="progbar"><i style="width:%.1f%%;background:%s"></i></div>' % (barw, "#2a6ba8" if f["weight"] > 40 else "#7bb6e3") + \
              '<div class="frow" style="margin-top:8px"><span class="fl">持仓成本 / 单位成本</span><span class="fv">%s 万元 · %.4f</span></div>' % (fmt(f["cost"]), f["navcost"]) + \
@@ -971,12 +978,12 @@ def _fcards(funds):
              '<div class="frow"><span class="fl">近1年 / 今年以来</span><span class="fv" style="color:%s">%s / %s</span></div>' % (
                  RED if f["y1"] >= 0 else GREEN, pct(f["y1"], 2), pct(f["ytd"], 2)) + \
              '<div class="frow"><span class="fl">近1月 / 近3月</span><span class="fv" style="color:%s">%s / %s</span></div>' % (
-                 RED if f["m1"] >= 0 else GREEN, pct(f["m1"], 4), pct(f["m3"], 4)) + \
+                 RED if f["m1"] >= 0 else GREEN, pct(f["m1"], 2), pct(f["m3"], 2)) + \
              '<div class="frow"><span class="fl">最大回撤 / 年化波动率</span><span class="fv">%.4f%% / %.4f%%</span></div>' % (f["mdd"], f["vol"]) + \
              '<div class="frow"><span class="fl">Sharpe / Calmar</span><span class="fv" style="color:%s">%.4f / %.4f</span></div>' % (sc, f["sharpe"], f["calmar"]) + \
-             '<div class="frow"><span class="fl">近6月 / 今年以来</span><span class="fv" style="color:%s">%s / %s</span></div>' % (
-                 RED if f["m6"] >= 0 else GREEN, pct(f["m6"], 2), pct(f["ytd"], 2)) + \
-             '<div class="frow"><span class="fl">资产配置（股/债/现金）</span><span class="fv">%.2f%% / %.2f%% / %.2f%%</span></div>' % (f["stock"], f["bond"], f["deposit"]) + \
+             '<div class="frow"><span class="fl">近1周 / 近6月</span><span class="fv" style="color:%s">%s / %s</span></div>' % (
+                 RED if f["w1"] >= 0 else GREEN, pct(f["w1"], 2), pct(f["m6"], 2)) + \
+             '<div class="frow"><span class="fl">资产配置（股/债/现金/其他）</span><span class="fv">%.2f%% / %.2f%% / %.2f%% / %.2f%%</span></div>' % (f["stock"], f["bond"], f["deposit"], f["other"]) + \
              '<div class="frow"><span class="fl">申赎状态</span><span class="fv" style="color:%s">%s</span></div>' % (stcl, f["status"]) + \
              '</div>'
     return r
@@ -1019,7 +1026,7 @@ def _act_table(funds, totals, meta, changes):
 
     hi = [x for x in funds if num(x["fee"].replace("%", "")) >= 0.3]
     if hi and len(funds) > len(hi):
-        rows.append(("P2", "%s 管理费率 %s，高于组合内 ETF 的 0.15%%" % (
+        rows.append(("P2", "%s 申购费率 %s，高于组合内 ETF（场内交易免申购费）" % (
             "、".join(x["short"] for x in hi), "、".join(x["fee"] for x in hi)),
             "跟踪费后收益差异，评估主动管理是否带来对应超额，必要时用低费率指数化工具替代"))
 
@@ -1041,7 +1048,7 @@ def _act_table(funds, totals, meta, changes):
     for p, t, a in rows:
         r += ('<tr><td class="l"><span class="tag %s">%s</span></td>'
               '<td class="l" style="line-height:1.65">%s</td>'
-              '<td class="l" style="line-height:1.65;color:#4a5c73;font-size:12.5px">%s</td></tr>'
+              '<td class="l" style="line-height:1.65;color:#4a5c73;font-size:13.5px">%s</td></tr>'
               % (cls[p], p, t, a))
     return r
 
