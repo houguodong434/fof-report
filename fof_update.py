@@ -1358,6 +1358,14 @@ def main():
     render_html(funds, totals, meta, changes, html_path)
     log("报告已生成：%s" % html_path)
 
+    # 云端发布目录额外生成 index.html，保证 Pages 根链接始终指向当期报告
+    if os.path.basename(os.path.normpath(args.out)) == "site":
+        try:
+            shutil.copyfile(html_path, os.path.join(args.out, "index.html"))
+            log("首页副本：%s" % os.path.join(args.out, "index.html"))
+        except Exception as e:
+            log("index.html 生成失败（不影响发布）：%s" % e)
+
     shot = None
     chunks = []
     if not args.no_shot:
