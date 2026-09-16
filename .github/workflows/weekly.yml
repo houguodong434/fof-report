@@ -1,0 +1,69 @@
+name: FOF投后周报
+
+on:
+  schedule:
+    # UTC 01:30 = 北京时间 09:30，每周六
+    - cron: "30 1 * * 6"
+  push:
+    branches: [main]        # 首次推送即自动运行一次验证
+  workflow_dispatch: {}   # 支持手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  weekly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: pip install requests pillow openpyxl xlrd
+
+      - name: 安装 Chrome 与中文字体
+        run: |
+          wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq /tmp/chrome.deb || sudo apt-get install -y -qq -f /tmp/chrome.deb
+          sudo apt-get install -y -qq fonts-noto-cjk
+          fc-cache -f >/dev/null 2>&1 || true
+          google-chrome --version
+
+      - name: 解密持仓文件
+        env:
+          HOLDINGS_KEY: ${{ secrets.HOLDINGS_KEY }}
+        run: python crypt_holdings.py decrypt data/holdings.bin "data/基金.xls" "$HOLDINGS_KEY"
+
+      - name: 生成周报
+        run: |
+          python fof_update.py --holdings "data/基金.xls" --out site --quiet
+
+      - name: 发布报告到 GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          force_orphan: true
+          keep_files: false
+
+      - name: 推送到微信（Server酱 / PushPlus）
+        env:
+          SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          REPORT_DIR: site
+          PAGE_BASE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: python send_wechat.py
+
+      - name: 上传报告工件（保留90天）
+        uses: actions/upload-artifact@v4
+        with:
+          name: fof-report
+          path: site
+          retention-days: 90

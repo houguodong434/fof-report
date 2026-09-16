@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FOF投资组合投后管理分析报告</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: "Microsoft YaHei","PingFang SC","Hiragino Sans GB","Source Han Sans SC",sans-serif;
+    background:#eef1f6; color:#1c2434; line-height:1.6; padding:0 0 60px 0;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1240px; margin:0 auto; padding:0 22px; }
+
+  .hero {
+    background:linear-gradient(135deg,#16324f 0%,#1f4e79 45%,#2a6ba8 100%);
+    color:#fff; padding:38px 0 30px 0; margin-bottom:26px;
+    box-shadow:0 6px 22px rgba(22,50,79,.22);
+  }
+  .hero h1 { font-size:28px; font-weight:700; letter-spacing:.5px; margin-bottom:8px; }
+  .hero .sub { font-size:13.5px; color:#bcd3e8; display:flex; flex-wrap:wrap; gap:16px; }
+  .hero .sub span { display:inline-flex; align-items:center; gap:5px; }
+  .badge {
+    display:inline-block; background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.25);
+    border-radius:4px; padding:2px 9px; font-size:12px; margin-right:8px;
+  }
+
+  .kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-top:24px; }
+  .kpi {
+    background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.18);
+    border-radius:10px; padding:14px 16px; backdrop-filter:blur(4px);
+  }
+  .kpi .k { font-size:12px; color:#bcd3e8; margin-bottom:6px; letter-spacing:.3px; }
+  .kpi .v { font-size:22px; font-weight:700; font-family:"DIN Alternate","Bahnschrift",Consolas,monospace; letter-spacing:-.3px; }
+  .kpi .u { font-size:12px; font-weight:400; color:#bcd3e8; margin-left:3px; }
+  .up { color:#ff8a8a; }
+  .down { color:#6ee7a8; }
+  .flat { color:#e8eef6; }
+
+  section { margin-bottom:30px; }
+  .sec-head { display:flex; align-items:center; gap:11px; margin:0 0 16px 0; }
+  .sec-no {
+    width:28px; height:28px; border-radius:7px; background:#1f4e79; color:#fff;
+    font-size:14px; font-weight:700; display:flex; align-items:center; justify-content:center;
+    flex:0 0 auto; font-family:Consolas,monospace;
+  }
+  .sec-head h2 { font-size:19px; font-weight:700; color:#16324f; letter-spacing:.3px; }
+  .sec-head .hint { font-size:12.5px; color:#7b8a9e; margin-left:2px; font-weight:400; }
+
+  .card {
+    background:#fff; border-radius:12px; padding:20px 22px;
+    box-shadow:0 2px 10px rgba(28,36,52,.07); border:1px solid #e3e9f2;
+  }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .grid2-13 { display:grid; grid-template-columns:1fr 1.35fr; gap:18px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+  .card h3 { font-size:14.5px; font-weight:700; color:#2b3a4d; margin-bottom:4px; }
+  .card .desc { font-size:12.5px; color:#7b8a9e; margin-bottom:12px; }
+  .chart { width:100%; height:300px; }
+  .chart.tall { height:360px; }
+  .chart.short { height:250px; }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  thead th {
+    background:#f4f7fb; color:#43536b; font-weight:700; font-size:12.5px;
+    padding:9px 10px; text-align:right; border-bottom:1.5px solid #dde5f0; white-space:nowrap;
+  }
+  thead th:first-child, thead th.l { text-align:left; }
+  tbody td { padding:9px 10px; border-bottom:1px solid #eef2f8; text-align:right; font-family:"DIN Alternate","Bahnschrift",Consolas,monospace; font-size:12.8px; }
+  tbody td:first-child, tbody td.l { text-align:left; font-family:inherit; }
+  tbody tr:hover { background:#fafcff; }
+  tbody tr.total { background:#f4f7fb; font-weight:700; }
+  tbody tr.total td { border-bottom:none; border-top:1.5px solid #dde5f0; }
+  .code { color:#7b8a9e; font-size:11.5px; font-family:Consolas,monospace; }
+  .tag { display:inline-block; padding:1px 7px; border-radius:3px; font-size:11.5px; font-weight:600; }
+  .tag-b { background:#e8f1fb; color:#215f9a; }
+  .tag-e { background:#fdf1e3; color:#a86a10; }
+  .tag-r { background:#fdecec; color:#b93b3b; }
+  .tag-g { background:#e9f7ef; color:#1f7d51; }
+  .tag-x { background:#f0f2f6; color:#5a6a80; }
+
+  .insight {
+    border-left:4px solid #1f4e79; background:#f7fafe; border-radius:0 8px 8px 0;
+    padding:13px 17px; font-size:13.2px; color:#33465e; margin-top:14px;
+  }
+  .insight.warn { border-left-color:#d98a1f; background:#fffaf1; }
+  .insight.risk { border-left-color:#c94a4a; background:#fff6f6; }
+  .insight.good { border-left-color:#1f9c62; background:#f4fcf8; }
+  .insight.gray { border-left-color:#8794a8; background:#fafbfd; }
+  .insight b { color:#16324f; }
+
+  .fcard { background:#fff; border:1px solid #e3e9f2; border-radius:12px; padding:18px 20px; box-shadow:0 2px 10px rgba(28,36,52,.06); }
+  .fcard .fh { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; gap:10px; }
+  .fcard .fname { font-size:15px; font-weight:700; color:#16324f; line-height:1.35; }
+  .fcard .fmeta { font-size:11.5px; color:#8794a8; font-family:Consolas,monospace; margin-top:3px; }
+  .fcard .fret { font-size:19px; font-weight:700; font-family:"DIN Alternate",Consolas,monospace; white-space:nowrap; }
+  .frow { display:flex; justify-content:space-between; font-size:12.5px; padding:5.5px 0; border-bottom:1px dashed #eef2f8; gap:10px; }
+  .frow:last-child { border-bottom:none; }
+  .frow .fl { color:#7b8a9e; flex:0 0 auto; }
+  .frow .fv { font-family:"DIN Alternate",Consolas,monospace; font-weight:600; color:#2b3a4d; text-align:right; }
+  .progbar { height:6px; background:#eef2f8; border-radius:3px; overflow:hidden; margin-top:3px; }
+  .progbar i { display:block; height:100%; border-radius:3px; }
+
+  footer { text-align:center; font-size:12px; color:#8794a8; margin-top:34px; line-height:1.9; }
+
+  @media (max-width:980px){
+    .kpis { grid-template-columns:repeat(2,1fr); }
+    .grid2,.grid2-13,.grid3 { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <h1>FOF投资组合 · 投后管理分析报告</h1>
+    <div class="sub">
+      <span><span class="badge">估值日</span>{{VAL_DATE}}</span>
+      <span><span class="badge">持仓</span>{{HOLD_COUNT}} 只基金 / {{ACCT_COUNT}} 个账户</span>
+      <span><span class="badge">数据源</span>持仓明细 基金.xls + 同花顺/东方财富净值</span>
+      <span><span class="badge">报告期</span>{{PERIOD_LABEL}}</span>
+    </div>
+    <div class="kpis">{{KPI_HTML}}</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  {{CHANGES_SECTION}}
+
+  <section>
+    <div class="sec-head"><div class="sec-no">1</div><h2>持仓规模</h2><span class="hint">市值口径 · 单位：万元</span></div>
+    <div class="grid2-13">
+      <div class="card">
+        <h3>组合规模概览</h3>
+        <div class="desc">按基金市值降序</div>
+        <div class="chart" id="c_scale"></div>
+      </div>
+      <div class="card">
+        <h3>持仓明细表</h3>
+        <div class="desc">成本、市值与浮动盈亏（万元 / 万份）</div>
+        <table>
+          <thead><tr>
+            <th class="l">基金名称</th><th>持仓份额</th><th>持仓成本</th><th>全价市值</th>
+            <th>浮动盈亏</th><th>收益率</th><th>市值权重</th>
+          </tr></thead>
+          <tbody>{{TBL_HOLD}}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="insight">{{INSIGHT_SCALE}}</div>
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">2</div><h2>持仓结构</h2><span class="hint">按产品形态 / 管理人 / 流动性三个维度拆解</span></div>
+    <div class="grid3">
+      <div class="card"><h3>产品形态</h3><div class="desc">按基金类型占比</div><div class="chart" id="c_type"></div></div>
+      <div class="card"><h3>基金管理人</h3><div class="desc">按市值口径占比</div><div class="chart" id="c_mgr"></div></div>
+      <div class="card"><h3>流动性与申赎状态</h3><div class="desc">投后管理关键约束</div><div class="chart" id="c_liq"></div></div>
+    </div>
+    <div class="grid2" style="margin-top:18px">
+      <div class="card">
+        <h3>底层资产配置</h3>
+        <div class="desc">各基金最新报告期资产占基金净值比例（%）</div>
+        <div class="chart" id="c_asset"></div>
+      </div>
+      <div class="card">
+        <h3>结构小结与集中度</h3>
+        <div class="desc">组合层面风险敞口归因</div>
+        {{INSIGHT_STRUCT}}
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">3</div><h2>盈利情况</h2><span class="hint">账面浮动盈亏归因（红盈绿亏）</span></div>
+    <div class="grid2-13">
+      <div class="card">
+        <h3>盈利贡献瀑布</h3>
+        <div class="desc">各基金对组合累计盈亏的贡献（万元）</div>
+        <div class="chart" id="c_pnl"></div>
+      </div>
+      <div class="card">
+        <h3>盈亏与收益率对比</h3>
+        <div class="desc">柱=浮动盈亏（万元，左轴）｜折线=账面收益率（%，右轴）</div>
+        <div class="chart" id="c_pnl2"></div>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:18px">
+      <div class="card">
+        <h3>盈亏来源结构</h3>
+        <div class="desc">各基金对浮动盈亏的绝对贡献</div>
+        <div class="chart short" id="c_pnlpie"></div>
+      </div>
+      <div class="card" style="display:flex;flex-direction:column;justify-content:center">{{INSIGHT_PNL}}</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">4</div><h2>最近表现分析</h2><span class="hint">净值走势 · 区间收益 · 风险指标（截至 {{VAL_DATE}}）</span></div>
+
+    <div class="card" style="margin-bottom:18px">
+      <h3>近一年复权净值走势（起点归一化 = 100）</h3>
+      <div class="desc">按各基金官方日增长率复权累计，可跨分红拆分口径对比</div>
+      <div class="chart tall" id="c_nav"></div>
+    </div>
+
+    <div class="card">
+      <h3>风险收益定位</h3>
+      <div class="desc">横轴=年化波动率（%）｜纵轴=近1年收益率（%）｜气泡=基金规模</div>
+      <div class="chart tall" id="c_riskret"></div>
+    </div>
+
+    {{INSIGHT_PERF}}
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">5</div><h2>持仓基金画像</h2><span class="hint">单只基金的规模、费率、业绩与风险特征</span></div>
+    <div class="grid2">{{FCARDS}}</div>
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">6</div><h2>投后管理关注要点</h2><span class="hint">基于以上数据的风险提示与后续跟踪建议</span></div>
+    <div class="card">
+      <table style="margin-bottom:6px">
+        <thead><tr><th class="l" style="width:56px">优先级</th><th class="l">关注事项</th><th class="l" style="width:38%">跟踪动作建议</th></tr></thead>
+        <tbody>{{ACT_TABLE}}</tbody>
+      </table>
+      <div class="insight warn" style="margin-top:16px">{{DATA_NOTE}}</div>
+      <div class="insight risk" style="margin-top:12px">
+        <b>重要声明：</b>本报告为持仓数据分析，不构成任何投资建议或买卖推荐。基金过往业绩不代表未来表现。
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    FOF投资组合投后管理分析报告 · 生成时间 {{GEN_TIME}}<br>
+    持仓数据来源：基金.xls ｜ 市场数据来源：同花顺 / 东方财富公开数据（{{NAV_DATE}}）
+  </footer>
+</div>
+
+<script>/*__ECHARTS__*/</script>
+<script>
+/* ================= 数据层（由 update_portfolio.py 自动生成） ================= */
+var REPORT = /*__DATA__*/;
+var FUNDS = REPORT.funds;
+var TOTAL = REPORT.total;
+var NAVSERIES = REPORT.navseries;
+var CHANGES = REPORT.changes;
+var VAL_DATE = REPORT.valDate;
+
+var RED='#d93f3f', GREEN='#1f9c62', BLUE='#2a6ba8', DEEP='#16324f', MUTED='#8794a8';
+var AXIS = { axisLine:{lineStyle:{color:'#d6dee9'}}, axisLabel:{color:'#6b7b92',fontSize:11},
+             splitLine:{lineStyle:{color:'#eef2f8'}} };
+var TT = { backgroundColor:'rgba(255,255,255,.97)', borderColor:'#dde5f0', borderWidth:1,
+           textStyle:{color:'#2b3a4d',fontSize:12.5}, extraCssText:'box-shadow:0 4px 14px rgba(28,36,52,.12);border-radius:8px;' };
+var FONT = 'Microsoft YaHei, PingFang SC, sans-serif';
+var PALETTE = ['#2a6ba8','#7bb6e3','#1f9c62','#d98a1f','#8a5cd6','#c93636','#4f93cd','#6bbf92'];
+function fmt2(v){ return (v||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function sgn(v,d){ d = d===undefined?4:d; return (v>=0?'+':'')+v.toFixed(d); }
+
+/* ================= 持仓变动（新增/增持/减持/清仓） ================= */
+(function(){
+  var el = document.getElementById('c_change');
+  if(!el || !CHANGES || !CHANGES.items || !CHANGES.items.length) return;
+  var d = CHANGES.items;
+  var ch = echarts.init(el);
+  ch.setOption({
+    grid:{left:10,right:60,top:30,bottom:8,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},...TT,
+      formatter:function(ps){
+        var it=d[ps[0].dataIndex], s='<b>'+it.name+'</b><br/>'+it.code+' · '+it.type+'<br/>';
+        s+='上期份额：'+fmt2(it.prevShares)+' 万份<br/>本期份额：'+fmt2(it.curShares)+' 万份<br/>';
+        s+='份额变动：'+sgn(it.dShares,2)+' 万份<br/>市值变动：'+sgn(it.dMv,2)+' 万元';
+        return s; }},
+    legend:{top:0,icon:'roundRect',itemWidth:9,itemHeight:9,textStyle:{color:'#5d6d84',fontSize:11.5}},
+    xAxis:{type:'category',data:d.map(function(x){return x.short;}),...AXIS,
+      axisLabel:{color:'#43536b',fontSize:10.5,interval:0,rotate:14}},
+    yAxis:[{type:'value',name:'份额变动(万份)',nameTextStyle:{color:'#8794a8',fontSize:11},...AXIS},
+           {type:'value',name:'市值变动(万元)',nameTextStyle:{color:'#8794a8',fontSize:11},...AXIS,splitLine:{show:false}}],
+    series:[
+      { name:'份额变动(万份)', type:'bar', barWidth:'38%',
+        data:d.map(function(x){return {value:x.dShares,itemStyle:{color:x.dShares>=0?RED:GREEN,borderRadius:x.dShares>=0?[5,5,0,0]:[0,0,5,5]}};}),
+        label:{show:true,position:'top',color:'#43536b',fontSize:10.5,fontFamily:'Consolas,monospace',formatter:function(p){return sgn(p.value,2);}} },
+      { name:'市值变动(万元)', type:'line', yAxisIndex:1, smooth:true, symbolSize:7,
+        lineStyle:{width:2.2,color:'#2a6ba8'}, itemStyle:{color:'#2a6ba8'}, data:d.map(function(x){return x.dMv;}),
+        label:{show:true,position:'top',color:'#2a6ba8',fontSize:10.5,fontFamily:'Consolas,monospace',formatter:function(p){return sgn(p.value,2);}} }
+    ]
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+/* ================= 1. 规模 ================= */
+(function(){
+  var d = FUNDS.slice().sort(function(a,b){return a.mv-b.mv;});
+  var ch = echarts.init(document.getElementById('c_scale'));
+  ch.setOption({
+    grid:{left:8,right:78,top:16,bottom:8,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},...TT,
+      formatter:function(p){ var f=d[p[0].dataIndex];
+        return '<b>'+f.name+'</b><br/>'+f.code+'<br/>市值：'+fmt2(f.mv)+' 万元<br/>权重：'+f.weight.toFixed(2)+'%<br/>成本：'+fmt2(f.cost)+' 万元<br/>净值日：'+f.navDate; }},
+    xAxis:{type:'value',...AXIS},
+    yAxis:{type:'category',data:d.map(function(f){return f.short;}),...AXIS,splitLine:{show:false},
+      axisLabel:{color:'#43536b',fontSize:11.5,fontFamily:FONT}},
+    series:[{ type:'bar', barWidth:'46%',
+      data:d.map(function(f,i){ return {value:f.mv, itemStyle:{color:PALETTE[Math.min(i,PALETTE.length-1)],borderRadius:[0,5,5,0]}}; }),
+      label:{show:true,position:'right',color:'#43536b',fontSize:11.5,fontFamily:'Consolas,monospace',
+        formatter:function(p){ return fmt2(p.value)+'万 ('+d[p.dataIndex].weight.toFixed(1)+'%)'; }},
+      markLine:{silent:true,symbol:'none',data:[{xAxis:TOTAL.mv/d.length,lineStyle:{color:'#c9d4e2',type:'dashed'},
+        label:{formatter:'均值',color:'#8794a8',fontSize:10.5,position:'insideEndTop'}}]}
+    }]
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+/* ================= 2. 结构 ================= */
+var TIP_PIE = {...TT, formatter:function(p){ return '<b>'+p.name+'</b><br/>市值：'+fmt2(p.value)+' 万元<br/>占比：'+p.percent+'%'; }};
+
+(function(){
+  var map={};
+  FUNDS.forEach(function(f){ var k=f.cls; map[k]=(map[k]||0)+f.mv; });
+  var data=Object.keys(map).map(function(k,i){ return {name:k,value:map[k],itemStyle:{color:PALETTE[i]}}; });
+  var ch = echarts.init(document.getElementById('c_type'));
+  ch.setOption({
+    tooltip:{trigger:'item',...TIP_PIE},
+    legend:{bottom:0,icon:'roundRect',itemWidth:9,itemHeight:9,textStyle:{color:'#5d6d84',fontSize:11.5}},
+    series:[{ type:'pie', radius:['42%','65%'], center:['50%','43%'],
+      itemStyle:{borderColor:'#fff',borderWidth:2.5},
+      label:{formatter:function(p){return p.percent.toFixed(1)+'%';},color:'#33465e',fontSize:12,fontWeight:'bold',fontFamily:'Consolas,monospace'},
+      labelLine:{length:12,length2:12,lineStyle:{color:'#c9d4e2'}}, data:data }]
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+(function(){
+  var map={};
+  FUNDS.forEach(function(f){ var k=f.mgr; map[k]=(map[k]||0)+f.mv; });
+  var data=Object.keys(map).sort(function(a,b){return map[b]-map[a];})
+    .map(function(k,i){ return {name:k,value:map[k],itemStyle:{color:PALETTE[i%PALETTE.length]}}; });
+  var ch = echarts.init(document.getElementById('c_mgr'));
+  ch.setOption({
+    tooltip:{trigger:'item',...TIP_PIE},
+    legend:{bottom:0,icon:'roundRect',itemWidth:9,itemHeight:9,textStyle:{color:'#5d6d84',fontSize:11.5}},
+    series:[{ type:'pie', radius:['44%','68%'], center:['50%','44%'],
+      itemStyle:{borderColor:'#fff',borderWidth:2.5},
+      label:{formatter:function(p){return p.percent.toFixed(1)+'%';},color:'#33465e',fontSize:12,fontWeight:'bold',fontFamily:'Consolas,monospace'},
+      labelLine:{length:10,length2:10,lineStyle:{color:'#c9d4e2'}}, data:data }]
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+(function(){
+  var g={};
+  FUNDS.forEach(function(f){ var k=f.liqGroup; if(!g[k]) g[k]={v:0,c:f.liqColor,tip:[]}; g[k].v+=f.mv; g[k].tip.push(f.short); });
+  var order=['open','limit','lock','other'];
+  var names={open:'每日开放',limit:'限大额申购',lock:'封闭期',other:'其他'};
+  var groups=order.filter(function(k){return g[k];}).map(function(k){
+    return {name:names[k],v:g[k].v,c:g[k].c,tip:g[k].tip.join('、')}; });
+  var ch = echarts.init(document.getElementById('c_liq'));
+  ch.setOption({
+    grid:{left:8,right:60,top:22,bottom:8,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},...TT,
+      formatter:function(p){ var x=groups[p[0].dataIndex];
+        return '<b>'+x.name+'</b><br/>市值：'+fmt2(x.v)+' 万元<br/>占比：'+(x.v/TOTAL.mv*100).toFixed(2)+'%<br/><span style="color:#8794a8">'+x.tip+'</span>'; }},
+    xAxis:{type:'value',...AXIS},
+    yAxis:{type:'category',data:groups.map(function(x){return x.name;}),...AXIS,splitLine:{show:false},
+      axisLabel:{color:'#43536b',fontSize:11}},
+    series:[{ type:'bar', barWidth:'52%',
+      data:groups.map(function(x){return {value:x.v,itemStyle:{color:x.c,borderRadius:[0,5,5,0]}};}),
+      label:{show:true,position:'right',color:'#43536b',fontSize:11.5,fontFamily:'Consolas,monospace',
+        formatter:function(p){ return (p.value/TOTAL.mv*100).toFixed(1)+'%'; }} }]
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+(function(){
+  var d = FUNDS.slice().sort(function(a,b){return b.mv-a.mv;});
+  var series = [
+    {n:'债券',c:'#2a6ba8',k:'bond'},
+    {n:'股票',c:'#d93f3f',k:'stock'},
+    {n:'银行存款/现金',c:'#8fc3a5',k:'deposit'},
+    {n:'其他资产',c:'#d9c9a3',k:'other'}
+  ];
+  var ch = echarts.init(document.getElementById('c_asset'));
+  ch.setOption({
+    grid:{left:8,right:20,top:32,bottom:8,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},...TT,
+      formatter:function(ps){ var f=d[ps[0].dataIndex], s='<b>'+f.short+'</b><br/>';
+        ps.forEach(function(p){ s+=p.marker+p.seriesName+'：'+p.value.toFixed(2)+'%<br/>'; }); return s; }},
+    legend:{top:0,icon:'roundRect',itemWidth:9,itemHeight:9,textStyle:{color:'#5d6d84',fontSize:11.5}},
+    xAxis:{type:'value',...AXIS,max:110},
+    yAxis:{type:'category',data:d.map(function(f){return f.short;}),...AXIS,splitLine:{show:false},
+      axisLabel:{color:'#43536b',fontSize:11}},
+    series:series.map(function(s){
+      return { name:s.n, type:'bar', stack:'a', barWidth:'48%', itemStyle:{color:s.c},
+        data:d.map(function(f){ return f[s.k]||0; }),
+        label:{show:true,position:'inside',color:'#fff',fontSize:10.5,fontFamily:'Consolas,monospace',
+          formatter:function(p){ return p.value>3?p.value.toFixed(1):''; }} };
+    })
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+/* ================= 3. 盈利 ================= */
+(function(){
+  var d = FUNDS.slice().sort(function(a,b){return b.pnl-a.pnl;});
+  var cum=0, bars=[], cumLine=[];
+  d.forEach(function(f){ bars.push(f.pnl); cum+=f.pnl; cumLine.push(cum); });
+  var ch = echarts.init(document.getElementById('c_pnl'));
+  ch.setOption({
+    grid:{left:10,right:22,top:30,bottom:8,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},...TT,
+      formatter:function(ps){ var f=d[ps[0].dataIndex], s='<b>'+f.short+'</b><br/>浮动盈亏：<b style="color:'+(f.pnl>=0?RED:GREEN)+'">'+sgn(f.pnl)+' 万元</b><br/>收益率：'+sgn(f.ret,4)+'%<br/>成本：'+fmt2(f.cost)+' 万元';
+        s+='<br/><span style="color:#8794a8">累计：'+sgn(cumLine[ps[0].dataIndex])+' 万元</span>'; return s; }},
+    legend:{top:0,icon:'roundRect',itemWidth:9,itemHeight:9,textStyle:{color:'#5d6d84',fontSize:11.5}},
+    xAxis:{type:'category',data:d.map(function(f){return f.short;}),...AXIS,
+      axisLabel:{color:'#43536b',fontSize:10.5,interval:0,rotate:14}},
+    yAxis:[{type:'value',name:'盈亏(万元)',nameTextStyle:{color:'#8794a8',fontSize:11},...AXIS},
+           {type:'value',name:'累计(万元)',nameTextStyle:{color:'#8794a8',fontSize:11},...AXIS,splitLine:{show:false}}],
+    series:[
+      { name:'单只浮动盈亏', type:'bar', barWidth:'40%',
+        data:bars.map(function(v){return {value:v,itemStyle:{color:v>=0?RED:GREEN,borderRadius:v>=0?[5,5,0,0]:[0,0,5,5]}};}),
+        label:{show:true,position:'top',color:'#43536b',fontSize:11,fontFamily:'Consolas,monospace',
+          formatter:function(p){return sgn(p.value,2);}},
+        markLine:{silent:true,symbol:'none',data:[{yAxis:0,lineStyle:{color:'#c9d4e2'}}]} },
+      { name:'累计盈亏', type:'line', yAxisIndex:1, smooth:true, symbolSize:7,
+        lineStyle:{width:2.2,color:'#2a6ba8'}, itemStyle:{color:'#2a6ba8'}, data:cumLine,
+        label:{show:true,position:'bottom',color:'#2a6ba8',fontSize:10.5,fontFamily:'Consolas,monospace',
+          formatter:function(p){return p.value.toFixed(2);}} }
+    ]
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+(function(){
+  var d = FUNDS.slice().sort(function(a,b){return b.pnl-a.pnl;});
+  var ch = echarts.init(document.getElementById('c_pnl2'));
+  ch.setOption({
+    grid:{left:10,right:52,top:34,bottom:8,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},...TT},
+    legend:{top:0,icon:'roundRect',itemWidth:9,itemHeight:9,textStyle:{color:'#5d6d84',fontSize:11.5}},
+    xAxis:{type:'category',data:d.map(function(f){return f.short;}),...AXIS,
+      axisLabel:{color:'#43536b',fontSize:10.5,interval:0,rotate:14}},
+    yAxis:[{type:'value',name:'盈亏(万元)',nameTextStyle:{color:'#8794a8',fontSize:11},...AXIS},
+           {type:'value',name:'收益率(%)',nameTextStyle:{color:'#8794a8',fontSize:11},...AXIS,splitLine:{show:false}}],
+    series:[
+      { name:'浮动盈亏(万元)', type:'bar', barWidth:'38%',
+        data:d.map(function(f){return {value:f.pnl,itemStyle:{color:f.pnl>=0?RED:GREEN,borderRadius:f.pnl>=0?[5,5,0,0]:[0,0,5,5]}};}),
+        label:{show:true,position:'top',color:'#43536b',fontSize:10.5,fontFamily:'Consolas,monospace',
+          formatter:function(p){return sgn(p.value,2);}} },
+      { name:'账面收益率(%)', type:'line', yAxisIndex:1, smooth:true, symbolSize:7,
+        lineStyle:{width:2.2,color:'#d98a1f'}, itemStyle:{color:'#d98a1f'}, data:d.map(function(f){return f.ret;}),
+        label:{show:true,position:'top',color:'#a86a10',fontSize:10.5,fontFamily:'Consolas,monospace',
+          formatter:function(p){return sgn(p.value,2)+'%';}} }
+    ]
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+(function(){
+  var d = FUNDS.filter(function(f){return Math.abs(f.pnl)>0.0001;}).slice().sort(function(a,b){return Math.abs(b.pnl)-Math.abs(a.pnl);});
+  var ch = echarts.init(document.getElementById('c_pnlpie'));
+  ch.setOption({
+    tooltip:{trigger:'item',...TT,formatter:function(p){
+      return '<b>'+p.name+'</b><br/>贡献：'+sgn(p.data.raw)+' 万元<br/>占绝对贡献比：'+p.percent+'%';}},
+    legend:{bottom:0,icon:'roundRect',itemWidth:9,itemHeight:9,textStyle:{color:'#5d6d84',fontSize:11.5}},
+    series:[{ type:'pie', radius:['40%','66%'], center:['50%','44%'],
+      itemStyle:{borderColor:'#fff',borderWidth:2.5},
+      label:{formatter:function(p){return sgn(p.data.raw,1);},color:'#33465e',fontSize:11,fontFamily:'Consolas,monospace'},
+      labelLine:{length:8,length2:8,lineStyle:{color:'#c9d4e2'}},
+      data:d.map(function(f,i){ return {name:f.short, value:Math.abs(f.pnl), raw:f.pnl,
+        itemStyle:{color: f.pnl>=0 ? (i===0?'#c93636':'#e08b8b') : (i===0?'#1f9c62':'#6bbf92')} }; }) }]
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+/* ================= 4. 表现 ================= */
+(function(){
+  var ch = echarts.init(document.getElementById('c_nav'));
+  if(!NAVSERIES || !NAVSERIES.length) return;
+  var allDates=[];
+  NAVSERIES.forEach(function(s){ s.d.forEach(function(x){ if(allDates.indexOf(x[0])<0) allDates.push(x[0]); }); });
+  allDates.sort();
+  var series = NAVSERIES.map(function(s,i){
+    var base = s.d[0][1], map={};
+    s.d.forEach(function(x){ map[x[0]]=+(x[1]/base*100).toFixed(3); });
+    var arr=[], last=null;
+    allDates.forEach(function(dt){ if(map[dt]!==undefined) last=map[dt]; arr.push(last); });
+    var color = s.color || PALETTE[i%PALETTE.length];
+    return { name:s.name, type:'line', smooth:true, symbol:'circle', symbolSize:5,
+      lineStyle:{width:2.3,color:color}, itemStyle:{color:color}, emphasis:{focus:'series'}, data:arr, connectNulls:true };
+  });
+  ch.setOption({
+    grid:{left:10,right:26,top:40,bottom:54,containLabel:true},
+    tooltip:{trigger:'axis',...TT,axisPointer:{type:'cross',crossStyle:{color:'#c9d4e2'}},
+      formatter:function(ps){ var s='<b>'+ps[0].axisValue+'</b><br/>';
+        ps.forEach(function(p){ if(p.value==null)return;
+          s+=p.marker+p.seriesName+'：'+p.value.toFixed(2)+' <span style="color:#8794a8">('+sgn(p.value-100,2)+'%)</span><br/>'; });
+        return s; }},
+    legend:{bottom:0,icon:'roundRect',itemWidth:11,itemHeight:8,textStyle:{color:'#5d6d84',fontSize:11.5}},
+    xAxis:{type:'category',data:allDates,...AXIS,
+      axisLabel:{color:'#6b7b92',fontSize:10.5,formatter:function(v){return v.slice(2,7);}}},
+    yAxis:{type:'value',name:'净值指数(起点=100)',nameTextStyle:{color:'#8794a8',fontSize:11},...AXIS,scale:true},
+    series:series
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+(function(){
+  var ch = echarts.init(document.getElementById('c_riskret'));
+  var maxScale = Math.max.apply(null, FUNDS.map(function(f){return f.scaleNum||10;}));
+  /* 气泡图专用短名 + 每只基金的标签方位，避免相邻气泡标签互相遮挡 */
+  var BSHORT = {'018481':'中金恒新90天A','511110':'易方达公司债ETF','005428':'渤海汇金3个月定开','511270':'海富通10年地方债ETF'};
+  var BLBL = {'511110':{position:'left',offset:[-6,0]},'005428':{position:'bottom',offset:[0,8]}};
+  ch.setOption({
+    grid:{left:14,right:34,top:30,bottom:14,containLabel:true},
+    tooltip:{trigger:'item',...TT,formatter:function(p){ var f=p.data.f;
+      return '<b>'+f.name+'</b><br/>年化波动率：'+f.vol.toFixed(4)+'%<br/>近1年收益：'+sgn(f.y1,4)+'%<br/>最大回撤：'+f.mdd.toFixed(4)+'%<br/>Sharpe：'+f.sharpe.toFixed(4)+'<br/>规模：'+f.scale; }},
+    xAxis:{type:'value',name:'年化波动率(%)',nameLocation:'middle',nameGap:28,nameTextStyle:{color:'#8794a8',fontSize:11},...AXIS},
+    yAxis:{type:'value',name:'近1年收益率(%)',nameTextStyle:{color:'#8794a8',fontSize:11},...AXIS},
+    series:[{ type:'scatter',
+      symbolSize:function(v,params){ return 16 + Math.sqrt((params.data.f.scaleNum||10)/maxScale)*30; },
+      itemStyle:{ color:function(p){ var f=p.data.f;
+          if(f.sharpe>=2) return '#1f9c62'; if(f.sharpe>=1.4) return '#2a6ba8'; return '#d93f3f'; },
+        opacity:.82, borderColor:'#fff', borderWidth:2, shadowBlur:8, shadowColor:'rgba(28,36,52,.18)' },
+      label:{show:true,position:'top',color:'#33465e',fontSize:11,fontFamily:FONT,fontWeight:'bold',
+        formatter:function(p){return BSHORT[p.data.f.code]||p.data.f.short;}},
+      data:FUNDS.map(function(f){
+        var o = {value:[f.vol,f.y1], f:f};
+        if(BLBL[f.code]) o.label = BLBL[f.code];
+        return o;
+      }) }]
+  });
+  window.addEventListener('resize',function(){ch.resize();});
+})();
+
+</script>
+</body>
+</html>
