@@ -338,6 +338,45 @@ def fetch_fund(code, verbose=True):
     return out
 
 
+_DIV_RE = re.compile(r"每(\d+(?:\.\d+)?)份派现金(\d+(?:\.\d+)?)元")
+_DIV_CACHE = {}
+
+
+def fetch_dividends(code, since, verbose=True):
+    """拉取净值历史中的现金分红记录（除息日 >= since），返回 [(除息日, 每份分红元)]。
+
+    东方财富 f10 分红专用接口不可用，改用 lsjz 的 FHSP 字段逐页回溯；
+    列表按日期降序，遇到早于 since 的记录即停止。
+    """
+    key = (code, since)
+    if key in _DIV_CACHE:
+        return _DIV_CACHE[key]
+    divs = []
+    try:
+        for page in range(1, 31):
+            u = ("https://api.fund.eastmoney.com/f10/lsjz?fundCode=%s&pageIndex=%d&pageSize=49"
+                 % (code, page))
+            j = json.loads(http_get(u, referer="https://fundf10.eastmoney.com/"))
+            lst = (j.get("Data") or {}).get("LSJZList") or []
+            if not lst:
+                break
+            for it in lst:
+                d = (it.get("FSRQ") or "").strip()
+                fh = (it.get("FHSP") or "").strip()
+                if not d or not fh or d < since:
+                    continue
+                m = _DIV_RE.search(fh)
+                if m and num(m.group(1)) > 0:
+                    divs.append((d, num(m.group(2)) / num(m.group(1))))
+            if (lst[-1].get("FSRQ") or "") < since:
+                break
+    except Exception as e:                  # noqa: BLE001
+        if verbose:
+            log("  ! %s 分红记录拉取异常：%s" % (code, e))
+    _DIV_CACHE[key] = divs
+    return divs
+
+
 def derive_metrics(f):
     """基于官方日增长率构造复权净值指数，计算区间收益与风险指标。"""
     trend = f.get("_trend") or []
@@ -462,7 +501,7 @@ def liq_of(sgzt, shzt, name):
     return "other", (sgzt or "—") + "｜" + (shzt or "—"), "#8794a8", (sgzt or "—")
 
 
-def build(nav_override, holdings_path, verbose=True):
+def build(nav_override, holdings_path, verbose=True, div_override=None):
     """核心：读表 + 取数 + 计算。返回 (header, holdings_df, funds, totals, meta)"""
     header, recs = read_holdings(holdings_path)
     log("读取持仓：%s，共 %d 条记录" % (os.path.basename(holdings_path), len(recs)))
@@ -501,8 +540,34 @@ def build(nav_override, holdings_path, verbose=True):
             nav = (mv_excel * 10000.0 / shares_raw) if shares_raw else 0.0
         acc = num(f.get("accNav"), nav)
 
+        # ---- 分红复权：除息日 >= 持仓日期的现金分红计入损益，避免除息日净值跳水造成假亏损
+        braw = pick(rec, "持仓日期", default="")
+        if isinstance(braw, (int, float)) and braw:
+            try:
+                braw = (datetime(1899, 12, 30) + timedelta(days=float(braw))).strftime("%Y-%m-%d")
+            except Exception:               # noqa: BLE001
+                braw = ""
+        mb = re.match(r"(\d{4}-\d{2}-\d{2})", str(braw or "").strip())
+        buy_date = mb.group(1) if mb else ""
+        dov = (div_override or {}).get(code) or {}
+        div_list = []
+        if num(dov.get("divPU")) > 0:       # 外部注入（如同花顺 iFinD）优先
+            div_list = [(str(x[0]), num(x[1])) for x in (dov.get("divList") or [])]
+            div_pu = num(dov.get("divPU"))
+        elif buy_date:
+            div_list = fetch_dividends(code, buy_date, verbose=verbose)
+            div_pu = sum(a for _, a in div_list)
+        else:
+            div_pu = 0.0
+        div_cash = shares_raw * div_pu / 10000.0
+        if verbose and div_list:
+            log("  ∙ %s(%s) 持有期分红（自 %s）：每份 %.4f 元，合计 %.2f 万元" % (
+                name, code, buy_date or "—", div_pu, div_cash))
+        if verbose and not buy_date and not dov:
+            log("  ! %s(%s) 持仓表无「持仓日期」，分红未计入盈亏" % (name, code))
+
         mv = shares_raw * nav / 10000.0
-        pnl = mv - cost if cost else 0.0
+        pnl = (mv - cost + div_cash) if cost else 0.0
         ret = (pnl / cost * 100.0) if cost else 0.0
         unit_cost = num(pick(rec, "单位持仓成本(元)", "单位成本", default=0)) or (cost * 10000.0 / shares_raw if shares_raw else 0)
 
@@ -526,6 +591,7 @@ def build(nav_override, holdings_path, verbose=True):
             "sharesRaw": shares_raw, "shares": round(shares_raw / 10000.0, 6),
             "cost": cost, "navcost": unit_cost, "mv": mv, "pnl": pnl, "ret": ret,
             "realized": realized,
+            "divPU": div_pu, "divCash": div_cash,
             "nav": nav, "acc": acc, "navDate": f.get("navDate", ""), "dayChg": num(f.get("dayChg")),
             "mvExcel": mv_excel,
             "w1": num(f.get("sy_1w")), "m1": num(f.get("sy_1y")), "m3": num(f.get("sy_3y")),
@@ -566,6 +632,7 @@ def build(nav_override, holdings_path, verbose=True):
 
     # 统一数值精度，避免报告里出现长小数
     _R = {"cost": 2, "mv": 2, "pnl": 4, "realized": 4, "ret": 4, "weight": 4,
+          "divCash": 2, "divPU": 4,
           "nav": 4, "acc": 4, "dayChg": 4, "mvExcel": 2,
           "w1": 4, "m1": 4, "m3": 4, "m6": 4, "ytd": 4, "y1": 4,
           "vol": 4, "mdd": 4, "sharpe": 4, "calmar": 4, "rank": 2,
@@ -971,7 +1038,10 @@ def _fcards(funds):
              '<div class="frow"><span class="fl">持仓市值 / 组合权重</span><span class="fv">%s 万元 · %.2f%%</span></div>' % (fmt(f["mv"]), f["weight"]) + \
              '<div class="progbar"><i style="width:%.1f%%;background:%s"></i></div>' % (barw, "#2a6ba8" if f["weight"] > 40 else "#7bb6e3") + \
              '<div class="frow" style="margin-top:8px"><span class="fl">持仓成本 / 单位成本</span><span class="fv">%s 万元 · %.4f</span></div>' % (fmt(f["cost"]), f["navcost"]) + \
-             '<div class="frow"><span class="fl">浮动盈亏</span><span class="fv" style="color:%s">%s 万元</span></div>' % (pc, fmt(f["pnl"], 4, True)) + \
+             '<div class="frow"><span class="fl">浮动盈亏%s</span><span class="fv" style="color:%s">%s 万元</span></div>' % (
+                 "（含分红）" if f.get("divCash") else "", pc, fmt(f["pnl"], 4, True)) + \
+             (('<div class="frow"><span class="fl">其中：持有期现金分红</span><span class="fv">每份 %.4f 元 · 合计 %s 万元</span></div>'
+               % (f["divPU"], fmt(f["divCash"]))) if f.get("divCash") else "") + \
              '<div class="frow"><span class="fl">最新单位净值 / 累计净值</span><span class="fv">%.4f / %.4f <span style="color:#8794a8">(%s)</span></span></div>' % (f["nav"], f["acc"], f["navDate"]) + \
              '<div class="frow"><span class="fl">基金规模 / 规模环比</span><span class="fv">%s · %s</span></div>' % (f["scale"], f["scaleMom"] or "—") + \
              '<div class="frow"><span class="fl">基金经理</span><span class="fv" style="font-family:inherit;font-weight:500">%s</span></div>' % f["mgrPerson"] + \
@@ -1081,6 +1151,9 @@ def render_html(funds, totals, meta, changes, out_path, template_path=TEMPLATE_P
             "（最新净值日 %s）。"
             "风险指标为近 1 年窗口、按官方日增长率复权后计算：波动率为日频年化，"
             "Sharpe 采用无风险利率 %.1f%%，Calmar = 近1年收益 / 最大回撤。"
+            "浮动盈亏按<b>复权口径</b>核算：市值 − 持仓成本 + 持有期现金分红"
+            "（分红除息日 ≥ 持仓表「持仓日期」，分红记录经同花顺 iFinD 数据交叉核验），"
+            "避免基金分红除息导致净值跳水、盈亏被低估。"
             "该表<b>未包含建仓日期</b>，因此「账面收益率」为累计浮动收益率，"
             "<b>无法换算为年化收益或与市场基准做同期对比</b>。") % (
                 meta["valDate"], meta["navDate"], RF)
@@ -1126,7 +1199,7 @@ def write_excel(funds, totals, meta, out_path):
     cols = [
         ("基金代码", 10), ("名称", 30), ("产品分类", 10), ("基金市场", 12), ("资产类型", 12),
         ("内部证券账户", 14), ("持仓份额", 18), ("持仓份额(万)", 14),
-        ("持仓成本(万元)", 15), ("单位持仓成本(元)", 15),
+        ("持仓成本(万元)", 15), ("单位持仓成本(元)", 15), ("累计分红(万元)", 14),
         ("最新单位净值", 13), ("净值日期", 12), ("全价市值(万元)", 15),
         ("浮动盈亏(万元)", 15), ("总盈亏(万元)", 15), ("已实现损益(万元)", 16),
         ("账面收益率(%)", 14), ("市值权重(%)", 13),
@@ -1155,7 +1228,7 @@ def write_excel(funds, totals, meta, out_path):
     for f in sorted(funds, key=lambda x: -x["mv"]):
         vals = [f["code"], f["name"], f["cls"], f["mk"], f["atype"], f["acct"],
                 f["sharesRaw"], round(f["shares"], 6), round(f["cost"], 2), round(f["navcost"], 4),
-                round(f["nav"], 4), f["navDate"], round(f["mv"], 2),
+                round(f.get("divCash", 0.0), 2), round(f["nav"], 4), f["navDate"], round(f["mv"], 2),
                 round(f["pnl"], 4), round(f["pnl"], 4), round(f["realized"], 4),
                 round(f["ret"], 4), round(f["weight"], 4),
                 round(f["w1"], 4), round(f["m1"], 4), round(f["m3"], 4), round(f["m6"], 4),
@@ -1168,21 +1241,22 @@ def write_excel(funds, totals, meta, out_path):
             c = ws.cell(row=r, column=i, value=v)
             c.border = border
             c.font = Font(size=10)
-            c.alignment = Alignment(horizontal="left" if i <= 6 or i == 36 else "right", vertical="center")
+            c.alignment = Alignment(horizontal="left" if i <= 6 or i == 37 else "right", vertical="center")
         if f["pnl"] >= 0:
-            ws.cell(row=r, column=14).font = Font(size=10, bold=True, color="C00000")
+            ws.cell(row=r, column=15).font = Font(size=10, bold=True, color="C00000")
         else:
-            ws.cell(row=r, column=14).font = Font(size=10, bold=True, color="1F7D51")
-        ws.cell(row=r, column=18).number_format = "0.00"
+            ws.cell(row=r, column=15).font = Font(size=10, bold=True, color="1F7D51")
+        ws.cell(row=r, column=19).number_format = "0.00"
         r += 1
 
     ws.cell(row=r, column=2, value="合计（%d 只）" % len(funds)).font = Font(bold=True, size=10)
     for col, val in ((8, round(sum(x["shares"] for x in funds), 6)), (9, round(totals["cost"], 2)),
-                     (13, round(totals["mv"], 2)), (14, round(totals["pnl"], 4)),
-                     (16, round(totals["realized"], 4)), (17, round(totals["ret"], 4))):
+                     (11, round(sum(x.get("divCash", 0.0) for x in funds), 2)),
+                     (14, round(totals["mv"], 2)), (15, round(totals["pnl"], 4)),
+                     (17, round(totals["realized"], 4)), (18, round(totals["ret"], 4))):
         c = ws.cell(row=r, column=col, value=val)
         c.font = Font(bold=True, size=10, color="C00000" if totals["pnl"] >= 0 else "1F7D51")
-    ws.cell(row=r, column=18, value=100.0).font = Font(bold=True, size=10)
+    ws.cell(row=r, column=19, value=100.0).font = Font(bold=True, size=10)
 
     # 第二张表：组合汇总
     ws2 = wb.create_sheet("组合汇总")
@@ -1303,6 +1377,8 @@ def main():
     ap.add_argument("--out", default=DEFAULT_OUTDIR, help="输出目录")
     ap.add_argument("--date", default=None, help="估值日标签 YYYY-MM-DD，默认取最新净值日")
     ap.add_argument("--nav-json", default=None, help="外部净值覆盖 JSON：{code: {nav:..., ...}}")
+    ap.add_argument("--div-json", default=None,
+                    help="外部分红覆盖 JSON（如同花顺 iFinD 提取）：{code: {divPU: 每份累计分红, divList: [[除息日, 每份分红], ...]}}")
     ap.add_argument("--no-shot", action="store_true", help="不生成截图")
     ap.add_argument("--no-excel", action="store_true", help="不生成 Excel")
     ap.add_argument("--check", action="store_true", help="只体检，不写文件")
@@ -1317,8 +1393,13 @@ def main():
         with open(args.nav_json, encoding="utf-8") as fh:
             ov = json.load(fh)
         log("使用外部净值覆盖：%d 只" % len(ov))
+    dov = {}
+    if args.div_json and os.path.exists(args.div_json):
+        with open(args.div_json, encoding="utf-8") as fh:
+            dov = json.load(fh)
+        log("使用外部分红覆盖：%d 只" % len(dov))
 
-    header, recs, funds, totals, meta = build(ov, args.holdings, verbose=v)
+    header, recs, funds, totals, meta = build(ov, args.holdings, verbose=v, div_override=dov)
     if args.date:
         meta["valDate"] = args.date
     if not funds:
