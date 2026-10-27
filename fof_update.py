@@ -880,17 +880,21 @@ def _tbl_hold(funds, totals):
     r = ""
     for f in sorted(funds, key=lambda x: -x["mv"]):
         c = RED if f["pnl"] >= 0 else GREEN
+        dv = f.get("divCash", 0.0)
         r += ('<tr><td class="l"><b>%s</b><div class="code">%s · %s</div></td>'
               '<td>%s</td><td>%s</td><td>%s</td>'
+              '<td>%s</td>'
               '<td style="color:%s;font-weight:700">%s</td>'
               '<td style="color:%s;font-weight:700">%s</td><td><b>%.2f%%</b></td></tr>'
               % (f["name"], f["code"], f["cls"], fmt(f["shares"], 2), fmt(f["cost"], 2),
-                 fmt(f["mv"], 2), c, fmt(f["pnl"], 4, True), c, pct(f["ret"], 4), f["weight"]))
+                 fmt(f["mv"], 2), ("%.2f" % dv) if dv else "—", c, fmt(f["pnl"], 4, True), c, pct(f["ret"], 4), f["weight"]))
     c = RED if totals["pnl"] >= 0 else GREEN
     r += ('<tr class="total"><td class="l">合计（%d 只）</td><td>%s</td><td>%s</td><td>%s</td>'
+          '<td>%s</td>'
           '<td style="color:%s">%s</td><td style="color:%s">%s</td><td>100.00%%</td></tr>'
           % (len(funds), fmt(sum(x["shares"] for x in funds), 2), fmt(totals["cost"]),
-             fmt(totals["mv"]), c, fmt(totals["pnl"], 4, True), c, pct(totals["ret"], 4)))
+             fmt(totals["mv"]), fmt(sum(x.get("divCash", 0.0) for x in funds), 2),
+             c, fmt(totals["pnl"], 4, True), c, pct(totals["ret"], 4)))
     return r
 
 
