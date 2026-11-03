@@ -810,11 +810,16 @@ def _kpi_html(totals, changes):
         return ('<div class="kpi"><div class="k">%s</div>'
                 '<div class="v %s">%s<span class="u">%s</span></div></div>' % (k_, cls, v_, u_))
 
-    cls = "up" if totals["pnl"] >= 0 else "down"
+    float_pnl = totals["mv"] - totals["cost"]
+    cls_t = "up" if totals["pnl"] >= 0 else "down"
+    cls_f = "up" if float_pnl >= 0 else "down"
+    cls_r = "up" if totals["realized"] >= 0 else "down"
     h = k("组合总市值", fmt(totals["mv"]), "万元")
     h += k("持仓总成本", fmt(totals["cost"]), "万元")
-    h += k("累计浮动盈亏", fmt(totals["pnl"], 2, True), "万元", cls)
-    h += k("组合账面收益率", fmt(totals["ret"], 2, True), "%", cls)
+    h += k("累计浮动盈亏", fmt(float_pnl, 2, True), "万元", cls_f)
+    h += k("已实现收益", fmt(totals["realized"], 2, True), "万元", cls_r)
+    h += k("累计总盈亏", fmt(totals["pnl"], 2, True), "万元", cls_t)
+    h += k("组合账面收益率", fmt(totals["ret"], 2, True), "%", cls_t)
     h += k("盈利 / 亏损基金", "%d / %d" % (totals["profitN"], totals["lossN"]), "只")
     return h
 
@@ -869,7 +874,7 @@ def _changes_section(changes, totals):
       </div>
     </div>
     <div class="insight warn">
-      <b>本期变动：</b>%s。组合总市值较上期变动 <b>%s 万元</b>，累计浮动盈亏变动 <b>%s 万元</b>。
+      <b>本期变动：</b>%s。组合总市值较上期变动 <b>%s 万元</b>，累计总盈亏变动 <b>%s 万元</b>。
       持仓调整后需重新评估集中度与流动性约束（详见第 2 节）。
     </div>
   </section>
@@ -965,11 +970,13 @@ def _insight_pnl(funds, totals):
             "、".join("<b>%s</b> %s 万元（%s）" % (x["short"], fmt(x["pnl"], 2, True), pct(x["ret"], 2))
                       for x in los),
             fmt(tl, 2, True), abs(tl) / tw * 100 if tw else 0))
-    parts.append('<div class="insight"><b>净结果：</b>组合累计浮动盈亏 <b>%s 万元</b>，整体账面收益率 <b>%s</b>；'
-                 '已实现损益 <b>%s 万元</b>。%s</div>' % (
-                     fmt(totals["pnl"], 2, True), pct(totals["ret"], 2),
+    parts.append('<div class="insight"><b>净结果：</b>累计总盈亏 <b>%s 万元</b>（浮动盈亏 %s + 已实现收益 %s），'
+                 '整体账面收益率 <b>%s</b>。%s</div>' % (
+                     fmt(totals["pnl"], 2, True),
+                     fmt(totals["mv"] - totals["cost"], 2, True),
                      fmt(totals["realized"], 2, True),
-                     "账面盈亏为浮动口径，未考虑申赎费用。" ))
+                     pct(totals["ret"], 2),
+                     "总盈亏未考虑申赎费用。" ))
     return "".join(parts)
 
 
@@ -1269,9 +1276,10 @@ def write_excel(funds, totals, meta, out_path):
         ("生成时间", meta["genTime"]), ("持仓基金数", len(funds)),
         ("组合总市值(万元)", round(totals["mv"], 2)),
         ("持仓总成本(万元)", round(totals["cost"], 2)),
-        ("累计浮动盈亏(万元)", round(totals["pnl"], 4)),
-        ("账面收益率(%)", round(totals["ret"], 4)),
+        ("累计浮动盈亏(万元)", round(totals["mv"] - totals["cost"], 4)),
         ("已实现损益(万元)", round(totals["realized"], 4)),
+        ("累计总盈亏(万元)", round(totals["pnl"], 4)),
+        ("账面收益率(%)", round(totals["ret"], 4)),
         ("", ""),
         ("— 按产品分类 —", ""),
     ]
