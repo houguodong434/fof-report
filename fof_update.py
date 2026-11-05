@@ -501,8 +501,11 @@ def liq_of(sgzt, shzt, name):
     return "other", (sgzt or "—") + "｜" + (shzt or "—"), "#8794a8", (sgzt or "—")
 
 
-def build(nav_override, holdings_path, verbose=True, div_override=None):
-    """核心：读表 + 取数 + 计算。返回 (header, holdings_df, funds, totals, meta)"""
+def build(nav_override, holdings_path, verbose=True, div_override=None, anchor=None):
+    """核心：读表 + 取数 + 计算。返回 (header, holdings_df, funds, totals, meta)
+
+    anchor: {code: 首次建仓日}，分红起点登记表。系统导出会把「持仓日期」整列刷新，
+    但分红起点只应在基金真正新建仓时重置——未变动基金沿用登记表里的最早日期。"""
     header, recs = read_holdings(holdings_path)
     log("读取持仓：%s，共 %d 条记录" % (os.path.basename(holdings_path), len(recs)))
 
@@ -549,6 +552,13 @@ def build(nav_override, holdings_path, verbose=True, div_override=None):
                 braw = ""
         mb = re.match(r"(\d{4}-\d{2}-\d{2})", str(braw or "").strip())
         buy_date = mb.group(1) if mb else ""
+        # 分红起点 = 登记表中的首次建仓日（只减不增），避免系统刷新持仓日期导致分红漏计
+        if anchor is not None:
+            a0 = anchor.get(code)
+            if a0 and (not buy_date or a0 < buy_date):
+                buy_date = a0
+            if buy_date:
+                anchor[code] = buy_date
         dov = (div_override or {}).get(code) or {}
         div_list = []
         if num(dov.get("divPU")) > 0:       # 外部注入（如同花顺 iFinD）优先
@@ -1163,7 +1173,8 @@ def render_html(funds, totals, meta, changes, out_path, template_path=TEMPLATE_P
             "风险指标为近 1 年窗口、按官方日增长率复权后计算：波动率为日频年化，"
             "Sharpe 采用无风险利率 %.1f%%，Calmar = 近1年收益 / 最大回撤。"
             "浮动盈亏按<b>复权口径</b>核算：市值 − 持仓成本 + 持有期现金分红"
-            "（分红除息日 ≥ 持仓表「持仓日期」，分红记录经同花顺 iFinD 数据交叉核验），"
+            "（分红除息日 ≥ 该基金<b>首次建仓日</b>——以历史快照自动登记为准，"
+            "持仓表「持仓日期」被系统整列刷新不影响分红计入；分红记录经同花顺 iFinD 数据交叉核验），"
             "避免基金分红除息导致净值跳水、盈亏被低估。"
             "该表<b>未包含建仓日期</b>，因此「账面收益率」为累计浮动收益率，"
             "<b>无法换算为年化收益或与市场基准做同期对比</b>。") % (
@@ -1411,7 +1422,26 @@ def main():
             dov = json.load(fh)
         log("使用外部分红覆盖：%d 只" % len(dov))
 
-    header, recs, funds, totals, meta = build(ov, args.holdings, verbose=v, div_override=dov)
+    # 分红起点登记表：{code: 首次建仓日}。系统导出会把「持仓日期」整列刷新成导出日，
+    # 会漏掉刷新前已发生的分红；故以历史快照首次出现日期为底，登记表只减不增。
+    anchor_path = os.path.join(hist_dir(args.out), "first_dates.json")
+    anchor = {}
+    for s in sorted(load_snapshots(args.out), key=lambda x: str(x.get("date", ""))):
+        for c in (s.get("holdings") or {}):
+            anchor.setdefault(c, s.get("date"))
+    # 内置登记表（脚本同目录，随仓库走，云端 Actions 无本地快照时依赖它）
+    _bundle = os.path.join(os.path.dirname(os.path.abspath(__file__)), "first_dates.json")
+    for _p in (_bundle, anchor_path):
+        if os.path.exists(_p):
+            try:
+                with open(_p, encoding="utf-8") as fh:
+                    for c, d in json.load(fh).items():
+                        if c not in anchor or (d and d < anchor[c]):
+                            anchor[c] = d
+            except Exception:               # noqa: BLE001
+                pass
+
+    header, recs, funds, totals, meta = build(ov, args.holdings, verbose=v, div_override=dov, anchor=anchor)
     if args.date:
         meta["valDate"] = args.date
     if not funds:
@@ -1465,6 +1495,14 @@ def main():
         shot, chunks = screenshot(html_path, os.path.join(args.out, "FOF组合投后管理分析报告_%s" % tag))
 
     snap_p, _ = save_snapshot(args.out, funds, totals, meta)
+
+    # 写回分红起点登记表
+    try:
+        with open(anchor_path, "w", encoding="utf-8") as fh:
+            json.dump(anchor, fh, ensure_ascii=False, indent=1)
+        log("分红起点登记：%s（%d 只）" % (anchor_path, len(anchor)))
+    except Exception as e:                  # noqa: BLE001
+        log("分红起点登记写入失败：%s" % e)
     log("历史快照：%s" % snap_p)
 
     log("")

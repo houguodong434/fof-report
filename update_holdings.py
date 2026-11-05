@@ -41,6 +41,41 @@ def main():
     run([py, CRYPT, "encrypt", a.xls, ENC, key])
     print("已生成加密持仓：", ENC)
 
+    # 同步维护分红起点登记表：新基金登记本次「持仓日期」，已有基金保留原值
+    try:
+        import json as _json
+        import re as _re
+        from datetime import datetime, timedelta
+        import xlrd
+        wb = xlrd.open_workbook(a.xls)
+        sh = wb.sheet_by_index(0)
+        hd = [str(sh.cell_value(1, c)).strip() for c in range(sh.ncols)]
+        try:
+            ic, idt = hd.index("基金代码"), hd.index("持仓日期")
+        except ValueError:
+            ic = idt = None
+        fd_path = os.path.join(HERE, "first_dates.json")
+        fd = {}
+        if ic is not None and os.path.exists(fd_path):
+            fd = _json.load(open(fd_path, encoding="utf-8"))
+        for r in range(2, sh.nrows):
+            code = str(sh.cell_value(r, ic)).strip()
+            if not code:
+                continue
+            if code in fd:
+                continue                     # 已登记，保留最早日期
+            raw = sh.cell_value(r, idt)
+            if isinstance(raw, (int, float)) and raw:
+                raw = (datetime(1899, 12, 30) + timedelta(days=float(raw))).strftime("%Y-%m-%d")
+            m = _re.match(r"(\d{4}-\d{2}-\d{2})", str(raw))
+            if m:
+                fd[code] = m.group(1)
+                print("登记分红起点：%s %s" % (code, fd[code]))
+        if fd:
+            _json.dump(fd, open(fd_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    except Exception as e:                   # noqa: BLE001
+        print("分红起点登记失败（不影响持仓加密）：%s" % e)
+
     if not a.push:
         print("（未推送，确认无误后加 --push 重新运行）")
         return
